@@ -1,0 +1,72 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+
+use Cwd 'cwd', 'realpath';
+use File::Basename;
+use File::Spec::Functions;
+use Data::Dumper;
+
+our $died_prematurely = 1;
+
+die "Usage: $0 freight.conf apt/distro [apt/distro [...]]\n" if $#ARGV<1;
+
+our $freight_conf = realpath(shift @ARGV);
+our $repo = $ARGV[0];
+our $workdir = cwd;
+
+our %packages;
+our %freight_conf;
+our @added;
+
+open CFG, "<$freight_conf" or die $!;
+while ( <CFG> ) {
+  /(\w+)=['"]([^'"]*)['"]/ or next;
+  $freight_conf{$1} = $2;
+}
+close CFG;
+
+foreach ( glob '*/Rakefile' ) {
+  my $dir = dirname($_);
+  my $tasks = `cd $dir ; rake -T`;
+  ($?>>8) and die;
+  my @packages =
+    grep { defined }
+      map { /^rake (\S+\.deb)\s+# / ? $1 : undef }
+        split $/, $tasks;
+
+  $packages{$dir} = \@packages if $#packages >= 0;
+}
+
+foreach my $dir ( keys %packages ) {
+  my @missing =
+    grep { ! -f catfile($freight_conf{VARLIB}, $repo, $_) }
+      @{$packages{$dir}};
+  next if $#missing < 0;
+
+  chdir $dir or die $!;
+
+  print "[$dir] rake ", join(" ", @missing), "\n";
+  system("rake", @missing);
+  ($?>>8) and die;
+
+  chdir $workdir or die $!;
+  foreach my $package ( @missing ) {
+    system("freight", "add", "-c", $freight_conf,
+           realpath(catfile($dir, $package)),
+           @ARGV);
+    ($?>>8) and die;
+    push @added, $package;
+  }
+}
+
+$died_prematurely = 0;
+
+END {
+  if ( $#added < 0 ) {
+    print "Nothing to do here for me.\n" unless $died_prematurely;
+  } else {
+    system("freight", "cache", "-c", $freight_conf);
+    print "Added packages:\n - ", join("\n - ", @added), "\n";
+  }
+}
