@@ -47,7 +47,7 @@ foreach my $dir ( keys %packages ) {
   chdir $dir or die $!;
 
   print "[$dir] rake ", join(" ", @missing), "\n";
-  system("rake", @missing);
+  system("fakeroot", "rake", @missing);
   ($?>>8) and die;
 
   chdir $workdir or die $!;
