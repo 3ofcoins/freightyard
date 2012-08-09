@@ -26,10 +26,12 @@ while ( <CFG> ) {
 }
 close CFG;
 
+our $rv = 0;
+
 foreach ( glob '*/Rakefile' ) {
   my $dir = dirname($_);
   my $tasks = `cd $dir ; rake -T`;
-  ($?>>8) and die;
+  $rv += $?>>8;
   my @packages =
     grep { defined }
       map { /^rake (\S+\.deb)\s+# / ? $1 : undef }
@@ -70,3 +72,5 @@ END {
     print "Added packages:\n - ", join("\n - ", @added), "\n";
   }
 }
+
+exit $rv;
